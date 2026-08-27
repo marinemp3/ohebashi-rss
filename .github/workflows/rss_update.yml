@@ -1,0 +1,45 @@
+# .github/workflows/rss_update.yml
+
+name: RSSフィード自動更新
+
+on:
+  # スケジュール実行：毎日日本時間の朝9時に更新
+  schedule:
+    - cron: '0 0 * * *'  # UTC 0:00 = 日本時間 9:00
+  
+  # 手動実行ボタンも追加（テスト用）
+  workflow_dispatch:
+
+jobs:
+  update-rss:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # ステップ1: リポジトリのコードを取得
+    - name: リポジトリをチェックアウト
+      uses: actions/checkout@v4
+    
+    # ステップ2: Pythonをインストール
+    - name: Pythonをセットアップ
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    # ステップ3: 必要なライブラリをインストール
+    - name: 依存関係をインストール
+      run: |
+        pip install -r requirements.txt
+    
+    # ステップ4: RSSフィードを生成
+    - name: RSSフィードを生成
+      run: |
+        python create_rss.py
+    
+    # ステップ5: 変更をGitにコミット＆プッシュ
+    - name: 変更をコミットしてプッシュ
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add rss.xml
+        git diff --staged --quiet || git commit -m "RSSフィードを自動更新 $(date '+%Y-%m-%d %H:%M:%S')"
+        git push
