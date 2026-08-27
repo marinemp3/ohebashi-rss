@@ -2,14 +2,14 @@
 
 name: RSSフィード自動更新
 
-# ★ 書き込み権限を明示的に付与（これが重要！）
+# 書き込み権限を明示的に付与
 permissions:
   contents: write
 
 on:
-  # スケジュール実行：毎日日本時間の朝9時（UTC 0:00）
+  # ★★★ 中国時間 毎日15:00 に実行（UTC 7:00）★★★
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 7 * * *'
   
   # 手動実行ボタン（テスト用）
   workflow_dispatch:
@@ -23,7 +23,6 @@ jobs:
     - name: リポジトリをチェックアウト
       uses: actions/checkout@v4
       with:
-        # ★ GitHubの自動トークンを使用して認証
         token: ${{ secrets.GITHUB_TOKEN }}
     
     # ステップ2: Pythonをインストール
@@ -46,10 +45,9 @@ jobs:
     - name: 変更をコミットしてプッシュ
       run: |
         git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git config.user.email "github-actions[bot]@users.noreply.github.com"
         git add rss.xml
         git diff --staged --quiet || git commit -m "RSSフィードを自動更新 $(date '+%Y-%m-%d %H:%M:%S')"
         git push
       env:
-        # ★ GitHubの自動トークンを環境変数として渡す
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
