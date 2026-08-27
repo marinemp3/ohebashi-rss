@@ -7,9 +7,9 @@ permissions:
   contents: write
 
 on:
-  # ★★★ 中国時間 毎日15:00 に実行（UTC 7:00）★★★
+  # ★★★ 中国時間 毎日15:30 に実行（UTC 7:00）★★★
   schedule:
-    - cron: '0 7 * * *'
+    - cron: '30 7 * * *'
   
   # 手動実行ボタン（テスト用）
   workflow_dispatch:
