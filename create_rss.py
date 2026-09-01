@@ -4,6 +4,7 @@ from feedgen.feed import FeedGenerator
 from datetime import datetime
 import time
 import os
+import re
 
 def scrape_newsletter():
     """大江橋法律事務所のニュースレター一覧をスクレイピング"""
@@ -24,18 +25,18 @@ def scrape_newsletter():
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
     
-    print("📡 ウェブページにアクセス中...")
+    print("[ステッカー] ウェブページにアクセス中...")
     
     try:
         # ページを取得
         response = requests.get(url, params=params, headers=headers, timeout=30)
-        response.raise_for_status()  # エラーがあれば例外を発生
-        response.encoding = 'utf-8'  # 文字コードを指定
+        response.raise_for_status()
+        response.encoding = 'utf-8'
         
-        print("✅ ページ取得成功！")
+        print("[ステッカー] ページ取得成功！")
         
     except Exception as e:
-        print(f"❌ ページ取得エラー: {e}")
+        print(f"[ステッカー] ページ取得エラー: {e}")
         return []
     
     # BeautifulSoupで解析
@@ -44,51 +45,80 @@ def scrape_newsletter():
     # ニュースレター一覧を格納するリスト
     articles = []
     
-    # 記事の要素を探す（実際のHTML構造に合わせて調整が必要）
-    # ここでは例として、通常のニュース一覧の構造を想定
-    # 実際のページ構造を確認してセレクタを調整してください
+    # HTML構造に基づいて記事を抽出
+    # 各記事は <dl> タグで囲まれている
+    dl_items = soup.find_all('dl')
     
-    # 方法1: テーブル形式の場合
-    # table_rows = soup.select('table tr')
+    for dl in dl_items:
+        # dtタグから日付とVolを取得
+        dt = dl.find('dt')
+        if not dt:
+            continue
+        
+        dt_text = dt.get_text(strip=True)
+        
+        # 日付を抽出（例：2026.07.24 → 2026-07-24）
+        date_match = re.search(r'(\d{4})\.(\d{2})\.(\d{2})', dt_text)
+        if not date_match:
+            continue
+        
+        date_str = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"
+        
+        # Vol番号を抽出
+        vol_match = re.search(r'Vol\.(\d+)', dt_text)
+        vol_str = vol_match.group(1) if vol_match else ""
+        
+        # ddタグからリンクとタイトルを取得
+        dd = dl.find('dd')
+        if not dd:
+            continue
+        
+        # PDFリンク（All.pdf）を探す
+        pdf_link = None
+        pdf_title = None
+        
+        # dd内のすべてのaタグをチェック
+        for a_tag in dd.find_all('a', href=True):
+            href = a_tag.get('href')
+            title = a_tag.get_text(strip=True)
+            
+            # PDFファイルへのリンクかつ「All.pdf」を含むものを優先
+            if href.endswith('.pdf') and 'All.pdf' in href:
+                pdf_link = href
+                pdf_title = title
+                break
+        
+        # All.pdfが見つからない場合、最初のPDFリンクを使用
+        if not pdf_link:
+            for a_tag in dd.find_all('a', href=True):
+                href = a_tag.get('href')
+                if href.endswith('.pdf'):
+                    pdf_link = href
+                    pdf_title = a_tag.get_text(strip=True)
+                    break
+        
+        if not pdf_link:
+            continue
+        
+        # 絶対URLに変換
+        if pdf_link.startswith('/'):
+            pdf_link = 'https://www.ohebashi.com' + pdf_link
+        elif not pdf_link.startswith('http'):
+            pdf_link = 'https://www.ohebashi.com/jp/newsletter/' + pdf_link
+        
+        # タイトルが取得できていない場合、Vol番号から作成
+        if not pdf_title:
+            pdf_title = f"中国最新法律Newsletter Vol.{vol_str}" if vol_str else "中国最新法律Newsletter"
+        
+        articles.append({
+            'title': pdf_title,
+            'link': pdf_link,
+            'date': date_str,
+            'vol': vol_str,
+            'description': f"大江橋法律事務所 中国最新法律Newsletter Vol.{vol_str} ({date_str})"
+        })
     
-    # 方法2: divリスト形式の場合
-    article_items = soup.find_all('div', class_='news-item')  # クラス名は仮定
-    
-    # もし上記で見つからない場合は、すべてのリンクから探す
-    if not article_items:
-        # タイトルに「中国最新法律News」を含むリンクを探す
-        all_links = soup.find_all('a')
-        for link in all_links:
-            title = link.get_text(strip=True)
-            if '中国最新法律News' in title:
-                href = link.get('href')
-                if href:
-                    # 絶対URLに変換
-                    if href.startswith('/'):
-                        href = 'https://www.ohebashi.com' + href
-                    elif not href.startswith('http'):
-                        href = 'https://www.ohebashi.com/jp/newsletter/' + href
-                    
-                    # 日付情報を探す（親要素や周辺要素から）
-                    parent = link.find_parent()
-                    date_text = ""
-                    if parent:
-                        # 日付っぽいテキストを探す（例: 2024年1月1日）
-                        parent_text = parent.get_text()
-                        # 簡単な日付抽出（実際はもっと精密に）
-                        import re
-                        date_match = re.search(r'(\d{4})年(\d{1,2})月(\d{1,2})日', parent_text)
-                        if date_match:
-                            date_text = f"{date_match.group(1)}-{date_match.group(2):0>2}-{date_match.group(3):0>2}"
-                    
-                    articles.append({
-                        'title': title,
-                        'link': href,
-                        'date': date_text,
-                        'description': f"大江橋法律事務所 中国最新法律News: {title}"
-                    })
-    
-    print(f"📝 {len(articles)}件の記事が見つかりました")
+    print(f"[ステッカー] {len(articles)}件の記事が見つかりました")
     
     # 日付でソート（新しい順）
     articles.sort(key=lambda x: x['date'], reverse=True)
@@ -99,7 +129,7 @@ def generate_rss(articles):
     """RSSフィードを生成"""
     
     if not articles:
-        print("⚠️ 記事が見つからないため、RSSを生成しません")
+        print("[ステッカー] 記事が見つからないため、RSSを生成しません")
         return
     
     fg = FeedGenerator()
@@ -118,14 +148,17 @@ def generate_rss(articles):
         fe.link(href=article['link'])
         fe.description(article['description'])
         
-        # 日付があれば設定
+        # 日付を設定（HTMLから取得した日付を使用）
         if article['date']:
             try:
-                # 日付文字列をパース
+                # 日付文字列をパース（例：2026-07-24）
                 pub_date = datetime.strptime(article['date'], '%Y-%m-%d')
+                # RSS仕様に合わせたフォーマットに変換
                 fe.pubDate(pub_date.strftime('%a, %d %b %Y %H:%M:%S +0900'))
-            except:
+                print(f"  [ステッカー] {article['title']} -> {pub_date.strftime('%Y-%m-%d')}")
+            except Exception as e:
                 # パースできない場合は現在時刻
+                print(f"  [ステッカー] 日付パースエラー: {article['date']} - {e}")
                 fe.pubDate(datetime.now().strftime('%a, %d %b %Y %H:%M:%S +0900'))
         else:
             fe.pubDate(datetime.now().strftime('%a, %d %b %Y %H:%M:%S +0900'))
@@ -136,15 +169,15 @@ def generate_rss(articles):
     # RSSファイルを保存
     rss_path = 'rss.xml'
     fg.rss_file(rss_path)
-    print(f"✅ RSSフィードを生成しました: {rss_path}")
+    print(f"[ステッカー] RSSフィードを生成しました: {rss_path}")
     
     # ファイルサイズを表示
     file_size = os.path.getsize(rss_path)
-    print(f"📊 ファイルサイズ: {file_size} bytes")
+    print(f"[ステッカー] ファイルサイズ: {file_size} bytes")
 
 def main():
     """メイン関数"""
-    print("🚀 RSSフィード生成を開始します...")
+    print("[ステッカー] RSSフィード生成を開始します...")
     print("=" * 50)
     
     # スクレイピング実行
@@ -154,11 +187,11 @@ def main():
     if articles:
         generate_rss(articles)
     else:
-        print("⚠️ 記事が見つかりませんでした。")
-        print("💡 ヒント: ウェブページのHTML構造を確認し、スクレイピング部分を調整してください。")
+        print("[ステッカー] 記事が見つかりませんでした。")
+        print("[ステッカー] ヒント: ウェブページのHTML構造を確認し、スクレイピング部分を調整してください。")
     
     print("=" * 50)
-    print("🏁 処理が完了しました！")
+    print("[ステッカー] 処理が完了しました！")
 
 if __name__ == "__main__":
     main()
